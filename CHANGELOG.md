@@ -4,6 +4,9 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Export ROM comparison to CSV or Markdown** — The compare window (`Ctrl+Shift+D`) can now export every changed cell and axis breakpoint across all modified tables to a file: toolbar **Export…** or `Ctrl+E`, choosing `.csv` or `.md` in the save dialog. CSV is one flat row per change (`Category, Table, Change Type, Row, Col, X Axis, Y Axis, <ROM A>, <ROM B>, Delta, Note`) for filtering/sorting in a spreadsheet; Markdown groups changes under a `## Category / Table` heading per modified table for a readable, shareable report. Values are rendered with each side's own scaling format (cross-definition compares can have different formats per side). New `src/core/comparison_export.py` (Qt-free, unit-tested independently of the window) plus `tests/fixtures/comparison_export/` golden files exercised against the real diff engine on the bundled example ROM.
+
 ## [v2.19.0] - 2026-09-26
 
 **NC Flash now includes definitions for about 100 more NC ECU calibrations**, from speeps' RomDrop set, with a knock-retard bug fixed in all of them. Already installed? Copy the new definitions into your workspace by hand (see below).
