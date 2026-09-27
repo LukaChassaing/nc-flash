@@ -190,6 +190,35 @@ class TestRowsForEntryCell:
         assert row.value_b == "2.500"  # def_b's 3-decimal format
         assert row.delta == "1.500"  # delta rendered with def_b's format
 
+    def test_x_axis_blank_when_values_stayed_1d_despite_an_x_axis(self):
+        """RomReader only reshapes a THREE_D table's values into a 2D grid
+        when len(values) == x_len * y_len; on a mismatched/stale definition
+        it leaves 'values' 1D while still populating 'x_axis'. _compute_diffs
+        then reports every changed cell as (i, 0) — col is a placeholder,
+        not a real X-axis index — so the X Axis column must stay blank
+        rather than repeat x_axis[0] for every row."""
+        definition = _make_definition()
+        table = _make_table(table_type=TableType.THREE_D)
+        entry = _base_entry(
+            table_a=table,
+            table_b=table,
+            data_a={
+                "values": np.array([1.0, 2.0, 3.0]),  # reshape failed: still 1D
+                "x_axis": np.array([100.0, 200.0]),  # populated despite that
+                "y_axis": np.array([5.0, 6.0, 7.0]),
+            },
+            data_b={
+                "values": np.array([1.0, 99.0, 3.0]),
+                "x_axis": np.array([100.0, 200.0]),
+                "y_axis": np.array([5.0, 6.0, 7.0]),
+            },
+            changed_cells={(1, 0)},
+        )
+        rows = rows_for_entry(entry, definition, definition)
+        assert len(rows) == 1
+        assert rows[0].x_axis == ""
+        assert rows[0].y_axis == "6.00"  # the real per-row axis is unaffected
+
 
 # ---------------------------------------------------------------------------
 # Unit tests: rows_for_entry — axis breakpoint changes
@@ -287,6 +316,33 @@ class TestRowsForEntryShapeMismatchAndOneSided:
         assert "(1, 2)" in row.value_a
         assert "(2, 1)" in row.value_b
         assert row.note != ""
+
+    def test_shape_mismatch_still_reports_a_concurrent_axis_change(self):
+        """A table can have BOTH a shape mismatch and a changed axis
+        breakpoint (_compute_diffs detects axis changes independently of
+        the shape check) — the axis change must not be silently dropped."""
+        definition = _make_definition()
+        table = _make_table(table_type=TableType.TWO_D)
+        entry = _base_entry(
+            table_a=table,
+            table_b=table,
+            data_a={
+                "values": np.array([[1.0, 2.0]]),
+                "y_axis": np.array([10.0, 20.0]),
+            },
+            data_b={
+                "values": np.array([[1.0], [2.0]]),
+                "y_axis": np.array([10.0, 25.0]),
+            },
+            changed_cells={(0, 0), (0, 1), (1, 0)},
+            changed_axes={"y_axis": {1}},
+            shape_mismatch=True,
+        )
+        rows = rows_for_entry(entry, definition, definition)
+        types = [r.change_type for r in rows]
+        assert types == ["shape_mismatch", "y_axis"]
+        axis_row = rows[1]
+        assert axis_row.value_a == "20.00" and axis_row.value_b == "25.00"
 
     def test_a_only_reports_every_element_on_side_a(self):
         definition = _make_definition()
@@ -439,6 +495,28 @@ class TestExportComparisonMarkdown:
         # The unescaped raw name must not appear anywhere in the output —
         # only its escaped form (checked above) is allowed.
         assert "Left | Right" not in text
+
+    def test_change_counts_reflect_reported_rows_not_raw_change_count(self):
+        """A shape-mismatch entry's change_count (set by _compute_diffs) is
+        the union of both tables' cell-index sets — 3 for a (1,2) vs (2,1)
+        mismatch — but the report only ever prints ONE summary row for it.
+        Both the per-table '_N change(s)_' line and the top-level 'Total
+        changes' must count what was actually printed, not that raw
+        detection metric."""
+        definition = _make_definition()
+        entry = _base_entry(
+            data_a={"values": np.array([[1.0, 2.0]])},
+            data_b={"values": np.array([[1.0], [2.0]])},
+            changed_cells={(0, 0), (0, 1), (1, 0)},
+            shape_mismatch=True,
+            change_count=3,  # what _compute_diffs would set — deliberately wrong here
+        )
+        text = export_comparison_markdown(
+            [entry], definition, definition, "Stock", "Modified"
+        )
+        assert "Total changes: 1" in text
+        assert "_1 change(s)_" in text
+        assert "_3 change(s)_" not in text
 
 
 # ---------------------------------------------------------------------------

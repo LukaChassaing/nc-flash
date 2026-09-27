@@ -72,9 +72,9 @@ def _axis_str(
     definition: Optional[RomDefinition],
     axis_type: AxisType,
     array,
-    idx: int,
+    idx: Optional[int],
 ) -> str:
-    if array is None or idx >= len(array):
+    if array is None or idx is None or idx >= len(array):
         return ""
     fmt = _get_axis_format(definition, table, axis_type) if table else ".2f"
     return _format_value(array[idx], fmt)
@@ -112,37 +112,45 @@ def _rows_for_two_sided_entry(
             delta="",
             note="Shapes differ — cannot compare cell-by-cell.",
         )
-        return
+        # Fall through to the axis-breakpoint loop below: _compute_diffs
+        # detects axis-breakpoint changes independently of a shape
+        # mismatch, so a table can have both.
+    else:
+        values_a = data_a.get("values")
+        values_b = data_b.get("values")
+        x_axis_a, y_axis_a = data_a.get("x_axis"), data_a.get("y_axis")
 
-    values_a = data_a.get("values")
-    values_b = data_b.get("values")
-    x_axis_a, y_axis_a = data_a.get("x_axis"), data_a.get("y_axis")
+        for row, col in sorted(entry["changed_cells"]):
+            if values_a.ndim == 1:
+                va, vb = float(values_a[row]), float(values_b[row])
+                out_row, out_col = row, None
+                # col is a placeholder (0) for a 1D array, not a real X-axis
+                # index — only a genuine 2D grid has a meaningful column.
+                x_idx = None
+            else:
+                va, vb = float(values_a[row, col]), float(values_b[row, col])
+                out_row, out_col = row, col
+                x_idx = col
 
-    for row, col in sorted(entry["changed_cells"]):
-        if values_a.ndim == 1:
-            va, vb = float(values_a[row]), float(values_b[row])
-            out_row, out_col = row, None
-        else:
-            va, vb = float(values_a[row, col]), float(values_b[row, col])
-            out_row, out_col = row, col
-
-        value_a_str = _value_str(table_a, definition_a, va)
-        value_b_str = _value_str(table_b, definition_b, vb)
-        value_fmt = (
-            _get_scaling_format(definition_b, table_b.scaling) if table_b else ".2f"
-        )
-        yield ComparisonRow(
-            category=category,
-            table=name,
-            change_type="cell",
-            row=out_row,
-            col=out_col,
-            x_axis=_axis_str(table_a, definition_a, AxisType.X_AXIS, x_axis_a, col),
-            y_axis=_axis_str(table_a, definition_a, AxisType.Y_AXIS, y_axis_a, row),
-            value_a=value_a_str,
-            value_b=value_b_str,
-            delta=_delta_str(va, vb, value_fmt),
-        )
+            value_a_str = _value_str(table_a, definition_a, va)
+            value_b_str = _value_str(table_b, definition_b, vb)
+            value_fmt = (
+                _get_scaling_format(definition_b, table_b.scaling) if table_b else ".2f"
+            )
+            yield ComparisonRow(
+                category=category,
+                table=name,
+                change_type="cell",
+                row=out_row,
+                col=out_col,
+                x_axis=_axis_str(
+                    table_a, definition_a, AxisType.X_AXIS, x_axis_a, x_idx
+                ),
+                y_axis=_axis_str(table_a, definition_a, AxisType.Y_AXIS, y_axis_a, row),
+                value_a=value_a_str,
+                value_b=value_b_str,
+                delta=_delta_str(va, vb, value_fmt),
+            )
 
     for axis_key, axis_type in (
         ("x_axis", AxisType.X_AXIS),
@@ -190,9 +198,13 @@ def _rows_for_one_sided_entry(
         if values.ndim == 1:
             v = float(values[row])
             out_row, out_col = row, None
+            # col is a placeholder (0) for a 1D array, not a real X-axis
+            # index — only a genuine 2D grid has a meaningful column.
+            x_idx = None
         else:
             v = float(values[row, col])
             out_row, out_col = row, col
+            x_idx = col
 
         value_str = _value_str(table, definition, v)
         yield ComparisonRow(
@@ -201,7 +213,7 @@ def _rows_for_one_sided_entry(
             change_type=change_type,
             row=out_row,
             col=out_col,
-            x_axis=_axis_str(table, definition, AxisType.X_AXIS, x_axis, col),
+            x_axis=_axis_str(table, definition, AxisType.X_AXIS, x_axis, x_idx),
             y_axis=_axis_str(table, definition, AxisType.Y_AXIS, y_axis, row),
             value_a=value_str if is_a else "",
             value_b="" if is_a else value_str,
@@ -278,7 +290,14 @@ def export_comparison_markdown(
 ) -> str:
     """Render a per-table Markdown report grouped by category/table."""
     ordered = sorted(entries, key=lambda e: (e["category"] or "", e["name"]))
-    total_changes = sum(e["change_count"] for e in ordered)
+    # Row counts are derived from what rows_for_entry actually emits, not
+    # from entry["change_count"] (a _compute_diffs-internal detection
+    # metric — e.g. for a shape mismatch it's the union of both tables'
+    # cell-index sets, not the single summary row the report shows).
+    entry_rows = [
+        (entry, rows_for_entry(entry, definition_a, definition_b)) for entry in ordered
+    ]
+    total_changes = sum(len(rows) for _, rows in entry_rows)
 
     lines = [
         f"# ROM Comparison — {name_a} vs {name_b}",
@@ -295,12 +314,11 @@ def export_comparison_markdown(
     )
     separator = "|---|---|---|---|---|---|---|---|---|"
 
-    for entry in ordered:
-        rows = rows_for_entry(entry, definition_a, definition_b)
+    for entry, rows in entry_rows:
         category = entry["category"] or "Uncategorized"
         lines.append(f"## {_escape_md(category)} / {_escape_md(entry['name'])}")
         lines.append("")
-        lines.append(f"_{entry['change_count']} change(s)_")
+        lines.append(f"_{len(rows)} change(s)_")
         lines.append("")
         lines.append(header)
         lines.append(separator)
