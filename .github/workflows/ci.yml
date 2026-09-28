@@ -31,7 +31,10 @@ jobs:
     steps:
     - uses: actions/checkout@v5
 
+    # Fork PRs get no secrets, so they can't fetch the private module. The
+    # code falls back to _secure_stub and the tests patch/skip what needs it.
     - name: Checkout secure module
+      if: ${{ !github.event.pull_request.head.repo.fork }}
       uses: actions/checkout@v5
       with:
         repository: cdufresne81/nc-flash-secure
@@ -39,6 +42,7 @@ jobs:
         path: _secure_tmp
 
     - name: Install secure module
+      if: ${{ !github.event.pull_request.head.repo.fork }}
       run: |
         mkdir -p src/ecu/_secure
         cp -r _secure_tmp/* src/ecu/_secure/
@@ -84,7 +88,10 @@ jobs:
     steps:
     - uses: actions/checkout@v5
 
+    # Fork PRs get no secrets, so they can't fetch the private module. The
+    # code falls back to _secure_stub and the tests patch/skip what needs it.
     - name: Checkout secure module
+      if: ${{ !github.event.pull_request.head.repo.fork }}
       uses: actions/checkout@v5
       with:
         repository: cdufresne81/nc-flash-secure
@@ -92,6 +99,7 @@ jobs:
         path: _secure_tmp
 
     - name: Install secure module
+      if: ${{ !github.event.pull_request.head.repo.fork }}
       run: |
         mkdir -p src/ecu/_secure
         cp -r _secure_tmp/* src/ecu/_secure/
