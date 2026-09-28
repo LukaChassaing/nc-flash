@@ -5,7 +5,10 @@ All notable changes to NC Flash are documented here.
 ## [Unreleased]
 
 ### Added
-- **Export ROM comparison to CSV or Markdown** — The compare window (`Ctrl+Shift+D`) can now export every changed cell and axis breakpoint across all modified tables to a file: toolbar **Export…** or `Ctrl+E`, choosing `.csv` or `.md` in the save dialog. CSV is one flat row per change (`Category, Table, Change Type, Row, Col, X Axis, Y Axis, <ROM A>, <ROM B>, Delta, Note`) for filtering/sorting in a spreadsheet; Markdown groups changes under a `## Category / Table` heading per modified table for a readable, shareable report. Values are rendered with each side's own scaling format (cross-definition compares can have different formats per side). A shape-mismatched table still reports any axis-breakpoint change detected on it, and the reported change counts always match the rows actually printed. New `src/core/comparison_export.py` (Qt-free, unit-tested independently of the window) plus `tests/fixtures/comparison_export/` golden files exercised against the real diff engine on the bundled example ROM. Screenshots added under `docs/screenshots/compare-export/`.
+- **Export a ROM comparison to CSV or Markdown (#126).** In the compare window, press `Ctrl+E` or click **Export…** to save every changed cell and axis value. CSV gives one row per change for sorting in a spreadsheet; Markdown gives a readable report grouped by table. Thanks to Luka Chassaing.
+
+### Fixed
+- **Automated checks now run on pull requests from outside contributors.** They used to fail at setup before running a single test.
 
 ## [v2.19.0] - 2026-09-26
 
